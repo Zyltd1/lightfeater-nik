@@ -1,0 +1,63 @@
+pipeline {
+  agent any
+
+  environment {
+    AWS_REGION = 'us-east-1'
+    AWS_ACCOUNT_ID = '468998844443'
+    FRONTEND_IMAGE = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/lightfeatherfrontend"
+    BACKEND_IMAGE  = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/lightfeaterlightbackend"
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+
+    stage('Login to AWS ECR') {
+      steps {
+        sh 'aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com'
+      }
+    }
+
+    stage('Build Frontend') {
+      steps {
+        dir('frontend') {
+          sh 'npm install'
+          sh 'npm run build'
+          sh 'docker build -t $FRONTEND_IMAGE .'
+          sh 'docker push $FRONTEND_IMAGE'
+        }
+      }
+    }
+
+    stage('Build Backend') {
+      steps {
+        dir('backend') {
+          sh 'docker build -t $BACKEND_IMAGE .'
+          sh 'docker push $BACKEND_IMAGE'
+        }
+      }
+    }
+
+    stage('Terraform Apply') {
+      steps {
+        dir('terraform') {
+          sh 'terraform init'
+          sh 'terraform plan'
+          sh 'terraform apply -auto-approve'
+        }
+      }
+    }
+  }
+
+  post {
+    success {
+      echo 'Deployment complete!'
+    }
+    failure {
+      echo 'Pipeline failed!'
+    }
+  }
+}
